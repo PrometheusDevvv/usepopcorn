@@ -79,13 +79,7 @@ export default function App() {
     setWatched(watched.filter(movie => movie.imdbID != id))
   }
 
-  useEffect(function(){
-    document.addEventListener('keydown', function(e){
-        if(e.code == 'Escape'){
-          handleCloseMovie()
-        }
-    });
-  }, []);
+
  
   useEffect(function() {
     const controller = new AbortController();
@@ -111,9 +105,7 @@ export default function App() {
         setIsLoading(false)
         setMovies(data.Search)
         setError("");
-        console.log(data.Search)
       }catch (err){
-        console.log(err.message);
         if(err.name  !== "AbortError"){
           throw new Error("Movie Not Found")
         }
@@ -135,6 +127,7 @@ export default function App() {
 
     }
     fetchMovies()
+    handleCloseMovie( )
 
     return function () {
       controller.abort();
@@ -371,6 +364,19 @@ function MovieDetails({ selectedId, onCloseMovies, onAddWatched, watched }){
     onAddWatched(newWatchedMovie);
     onCloseMovies();
   }
+  useEffect(function(){
+
+    function callback(e){
+        if(e.code == 'Escape'){
+          onCloseMovies()
+        }
+    }
+    document.addEventListener('keydown', callback);
+
+    return function(){
+      document.removeEventListener('keydown', callback);
+    }
+  }, [onCloseMovies]);
 
   useEffect(function(){
     if(!title){
@@ -380,7 +386,6 @@ function MovieDetails({ selectedId, onCloseMovies, onAddWatched, watched }){
 
     return function(){
       document.title = "usePopcorn";
-      console.log("Clean up effect for movie " + title)
     }
 
   }, [title]);
