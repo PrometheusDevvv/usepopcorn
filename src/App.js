@@ -59,24 +59,44 @@ export default function App() {
   const [error, setError] = useState(false);
   const [query, setQuery] = useState();
 
+
   const [selectedId, setSelectedId] = useState();
 
 
   function handleSelectedMovie(id){
     setSelectedId(selectedId =>  id == selectedId ? null : id );
   }
+
   function handleCloseMovie(){
     setSelectedId();
-
   }
+
+  function handleAddWatched(movie){
+    setWatched(watched => [...watched, movie]);
+  }
+
+  function handleDeleteWatched(id){
+    setWatched(watched.filter(movie => movie.imdbID != id))
+  }
+
+  useEffect(function(){
+    document.addEventListener('keydown', function(e){
+        if(e.code == 'Escape'){
+          handleCloseMovie()
+        }
+    });
+  }, []);
  
   useEffect(function() {
+    const controller = new AbortController();
+
     async function fetchMovies(){
+
       try{
         setError("");
 
         setIsLoading(true);
-        const res =  await fetch(`http://www.omdbapi.com/?apikey=${KEY}&s=${query}`);
+        const res =  await fetch(`http://www.omdbapi.com/?apikey=${KEY}&s=${query}`, {signal: controller.signal});
   
         if(!res.ok){
           throw new Error("SOmething went wrong with fetching movies")
@@ -90,9 +110,13 @@ export default function App() {
 
         setIsLoading(false)
         setMovies(data.Search)
+        setError("");
         console.log(data.Search)
       }catch (err){
-        console.log(err.message)
+        console.log(err.message);
+        if(err.name  !== "AbortError"){
+          throw new Error("Movie Not Found")
+        }
         setError(err.message);
       } finally {
 
@@ -104,12 +128,20 @@ export default function App() {
         setError('');
         return;
       }
+
+
      
 
 
     }
     fetchMovies()
+
+    return function () {
+      controller.abort();
+    } 
   }, [query]);
+
+
 
   return (
     <>
@@ -127,10 +159,10 @@ export default function App() {
 
         <Box>
          { selectedId ?
-          <MovieDetails selectedId = {selectedId} onCloseMovies= {handleCloseMovie} /> :  
+          <MovieDetails watched={watched} selectedId = {selectedId} onCloseMovies= {handleCloseMovie}  onAddWatched={handleAddWatched}/> :  
           <> 
             <WatchedSummary watched={watched} />
-            <WatchedMoviesList watched={watched} />
+            <WatchedMoviesList watched={watched} onDeleteWatched={handleDeleteWatched} />
           </>
          
         
@@ -264,7 +296,7 @@ function Movie({ movie, onSelectMovie }) {
 }
 
 function WatchedSummary({ watched }) {
-  const avgImdbRating = average(watched.map((movie) => movie.imdbRating));
+  const avgImdbRating = average(watched.map((movie) => movie.imdbRating)).toFixed(2);
   const avgUserRating = average(watched.map((movie) => movie.userRating));
   const avgRuntime = average(watched.map((movie) => movie.runtime));
 
@@ -293,9 +325,13 @@ function WatchedSummary({ watched }) {
   );
 }
 
-function MovieDetails({selectedId, onCloseMovies}){
+function MovieDetails({ selectedId, onCloseMovies, onAddWatched, watched }){
     const [movie, setMovie] = useState({});
     const [isLoading, setIsLoading] = useState(false);
+    const [ userRating, setUserRating ] = useState('');
+    const isWatched = watched.map( movie =>  movie.imdbID).includes(selectedId);
+    const watchedUserRating = watched.find(movie => movie.imdbID == selectedId)?.userRating;
+
     const {
       Title: title,
       Year: year,
@@ -308,7 +344,7 @@ function MovieDetails({selectedId, onCloseMovies}){
       Genre: genre,
       imdbRating : imdbRating
     } = movie;
-    console.log(year);
+
   useEffect(function(){
     async function getMovieDetails(){
       setIsLoading(true);
@@ -320,6 +356,34 @@ function MovieDetails({selectedId, onCloseMovies}){
     getMovieDetails();
   }, [selectedId]);
 
+  function handleAdd(){
+    const newWatchedMovie = {
+      imdbID: selectedId,
+      selectedId, 
+      title,
+      year,
+      poster,
+      imdbRating: Number(imdbRating),
+      runtime: Number(runtime.split(' ').at(0)),
+      userRating,
+    }
+
+    onAddWatched(newWatchedMovie);
+    onCloseMovies();
+  }
+
+  useEffect(function(){
+    if(!title){
+      return 
+    }
+    document.title = `Movie | ${title}`;
+
+    return function(){
+      document.title = "usePopcorn";
+      console.log("Clean up effect for movie " + title)
+    }
+
+  }, [title]);
 
   return (
     <div className="details">
@@ -344,7 +408,16 @@ function MovieDetails({selectedId, onCloseMovies}){
 
             <section>
               <div className="rating">
-                <StarRating maxRating={10} size={24}/>
+
+                {
+                  !isWatched ? 
+                  <>
+                    <StarRating maxRating={10} size={24} onSetRating={setUserRating}/> 
+                    {userRating > 0 && <button className="btn-add" onClick={handleAdd}>+ Add to the list</button>}
+                  </>
+               
+                  : <p>You rated with movie {watchedUserRating} ⭐ </p>
+              }
               </div>
               <p><em>{ plot }</em></p>
               <p>Starring { actors }</p>
@@ -357,20 +430,20 @@ function MovieDetails({selectedId, onCloseMovies}){
   )
 }
 
-function WatchedMoviesList({ watched }) {
+function WatchedMoviesList({ watched, onDeleteWatched }) {
   return (
     <ul className="list">
       {watched.map((movie) => (
-        <WatchedMovie movie={movie} key={movie.imdbID} />
+        <WatchedMovie movie={movie} key={movie.imdbID} onDeleteWatched = {onDeleteWatched} />
       ))}
     </ul>
   );
 }
 
-function WatchedMovie({ movie }) {
+function WatchedMovie({ movie, onDeleteWatched }) {
   return (
     <li>
-      <img src={movie.Poster} alt={`${movie.Title} poster`} />
+      <img src={movie.poster} alt={`${movie.title} poster`} />
       <h3>{movie.Title}</h3>
       <div>
         <p>
@@ -385,6 +458,7 @@ function WatchedMovie({ movie }) {
           <span>⏳</span>
           <span>{movie.runtime} min</span>
         </p>
+        <button className="btn-delete" onClick={() => onDeleteWatched(movie.imdbID)}>❌</button>
       </div>
     </li>
   );
